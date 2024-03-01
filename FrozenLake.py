@@ -1,63 +1,38 @@
-import gym
+
+import gymnasium as gym
 import numpy as np
 import matplotlib.pyplot as plt
+import json
 
-env = gym.make('FrozenLake-v1', is_slippery=True) 
+def softmax(q_values, tau=1.0):
+    """Compute softmax probabilities from q_values."""
+    preferences = q_values / tau
+    max_preference = np.max(preferences, axis=1, keepdims=True)
+    exp_preferences = np.exp(preferences - max_preference)
+    sum_exp_preferences = np.sum(exp_preferences, axis=1, keepdims=True)
+    action_probs = exp_preferences / sum_exp_preferences
+    return action_probs
 
-# Definir el espacio de estados y acciones
-estados = env.observation_space.n
-acciones = env.action_space.n
+def choose_action_softmax(state, q, tau=1.0):
+ 
+    action_probs = softmax(q[state].reshape(1, -1), tau)
+    action = np.random.choice(np.arange(q.shape[1]), p=action_probs.ravel())
+    return action
 
-# Inicializar la matriz Q
-Q = np.zeros((estados, acciones))
+def run(episodes, is_training=True, render=False):
 
-# Parámetros
-tasa_aprendizaje = 0.1
-gamma = 0.9
-epsilon = 0.1
+    env = gym.make('FrozenLake-v1', map_name="8x8", is_slippery=True, render_mode='human' if render else None)
 
-# Lista para almacenar las recompensas
-recompensas = []
+    if is_training:
+        q = np.zeros((env.observation_space.n, env.action_space.n))
+    else:
+        with open('frozen_lake8x8.json', 'r') as f:
+            q = np.array(json.load(f))
 
-# Bucle de entrenamiento
-for episodio in range(1000):
-    # Obtener el estado inicial
-    estado_actual = env.reset()
+    learning_rate_a = 0.9
+    discount_factor_g = 0.9
+    tau = 1.0  # Temperature parameter for softmax
+    tau_decay = 0.99
+    rng = np.random.default_rng()
 
-    # Episodio
-    while True:
-        # Seleccionar una acción según la política actual (epsilon-greedy)
-        if np.random.rand() < epsilon:
-            accion_actual = np.argmax(Q[int(estado_actual), :])
-
-        else:
-            accion_actual = np.argmax(Q[int(estado_actual), :])
-
-        # Realizar la acción
-        estado_siguiente, recompensa, hecho, _ = env.step(accion_actual)
-
-        # Actualizar la matriz Q
-        Q[estado_actual, accion_actual] = Q[estado_actual, accion_actual] + tasa_aprendizaje * (recompensa + gamma * np.max(Q[estado_siguiente, :]) - Q[estado_actual, accion_actual])
-
-        # Actualizar el estado actual
-        estado_actual = estado_siguiente
-
-        # Salir del episodio si se ha llegado al final
-        if hecho:
-            break
-
-    # Almacenar la recompensa del episodio
-    recompensas.append(recompensa)
-
-# Evaluación
-# Jugar el juego con la política aprendida
-recompensa_promedio = np.mean(recompensas[-100:])
-
-# Mostrar la recompensa promedio
-print("Recompensa promedio:", recompensa_promedio)
-
-# Graficar las recompensas
-plt.plot(recompensas)
-plt.xlabel("Episodio")
-plt.ylabel("Recompensa")
-plt.show()
+    rewards_per_episode = np.zeros(episodes)
